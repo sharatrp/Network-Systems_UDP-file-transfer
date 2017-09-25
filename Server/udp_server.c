@@ -82,6 +82,14 @@ void ls_function(int sock, char *value)
 
 void put_function(int sock, char *value)
 {
+		printf("r		printf("reached here?");
+		printf("reached here?");
+		printf("reached here?");
+		printf("reached here?");
+		printf("reached here?");
+		printf("reached here?");
+		printf("reached here?");
+eached here?");
 
 }
 
