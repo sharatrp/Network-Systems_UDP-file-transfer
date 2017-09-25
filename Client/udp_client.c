@@ -159,7 +159,7 @@ int main (int argc, char * argv[])
 	remote.sin_addr.s_addr = inet_addr(argv[1]); //sets remote IP address
 
 	//Causes the system to create a generic socket of type UDP (datagram)
-	if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < -1)
 	{
 		int errsv = errno;
 		printf("Socket not created. Refer to error number: %d of the errno function\n", errsv);
@@ -173,14 +173,15 @@ int main (int argc, char * argv[])
 	buffer[strlen(buffer)-1] = '\0';
 
 	//Sending the command and (if required) the file name to Server.
-	if( sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *) &remote, sizeof(remote)) == -1)
+	if( sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *) &remote, addr_length) < 0)
 	{
 		int errsv = errno;
 		printf("message not sent. Refer to error number: %d of the errno function\n", errsv);
 	}
 
+	printf("Sent the command %s .Waiting for the server response\n",buffer);
 	//Waiting for number of packets or ACK
-	if((recvfrom(sock, packetnumber, sizeof(packetnumber), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length)) == -1)
+	if((recvfrom(sock, packetnumber, MAXBUFSIZE, 0, (struct sockaddr *) &from_addr, &addr_length)) < -1)
 	{
 		int errsv = errno;
 		printf("message not received. Refer to error number: %d of the errno function\n", errsv);	

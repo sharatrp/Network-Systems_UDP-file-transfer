@@ -18,8 +18,10 @@
 #define MAXBUFSIZE 1000
 #define FORLISTINGMSGSIZE 1000
 
-struct sockaddr_in remote, from_addr;    			//"Internet socket address structure"
-unsigned int remote_length = sizeof(remote);        			//length of the sockaddr_in structure
+extern int errno;
+	// 	printf("File not opened. Refer to error number: %d of the errno function\n", errsv);
+	// 	exit(1);
+struct sockaddr_in from_addr;    			//"Internet socket address structure"
 unsigned int from_addr_length  = sizeof(from_addr);
 
 int nbytes;                        			//number of bytes we receive in our message
@@ -72,7 +74,7 @@ void ls_function(int sock, char *value)
 	}
 	printf("%s", file_list);
   	closedir(dir);
-	if(sendto(sock, &file_list, sizeof(file_list), 0, (struct sockaddr *)&remote, remote_length) < 0)    
+	if(sendto(sock, &file_list, sizeof(file_list), 0, (struct sockaddr *)&from_addr, from_addr_length) < 0)    
   	{
     	int errsv = errno;
 		printf("File not sent. Refer to error number: %d of the errno function\n", errsv);
@@ -88,73 +90,46 @@ void put_function(int sock, char *value)
 void get_function(int sock, char *value)
 {
 	char file_name[MAXBUFSIZE];
-	size_t sub_file_size = 1000;
+	long sub_file_size = 1000;
 	char ack [15];
 
-	printf("Value received: %s\n", value);
-
 	strcpy(file_name, value+4);
-
-	printf("Converted values: %s ; %s \n", value, file_name);
-
-	printf("File name: %s\n", file_name);
-
-	FILE *fp = NULL;
-	if((fp = fopen(file_name, "r")) == NULL)
-	{
-    	int errsv = errno;
-		printf("File not opened. Refer to error number: %d of the errno function\n", errsv);
-		exit(1);
-  	}
-
-	printf("reached here?");
-
+	FILE *fp = fopen(file_name, "r");
 
 	if(fp != NULL)
 	{
-		// printf("File Doesn't exist\n");
-		// exit(1);
-	// }
-	// else
-	// {
-	// 	printf("File exists. Continuing.\n");
-	// }
-
-		printf("reached here?");
-
 		fseek(fp,0,SEEK_END);
-		printf("reached here?");
-
-		size_t file_size = ftell(fp);
-		printf("reached here?");
-
+		long file_size = ftell(fp);
 		fseek(fp,0,SEEK_SET);
 
-		printf("reached here?");
+		printf("File size %ld , sub_file_size : %ld\n",file_size,sub_file_size);
+		
+		long sub_file_number = file_size / sub_file_size;
 
-
-		int sub_file_number = file_size/sub_file_size;
-
-		printf("No. of packets: %d", sub_file_number);
+		printf("No. of packets: %ld\n", ++sub_file_number);
 
 		// file_buffer = (char*) malloc (file_size);
 		// if(file_buffer == NULL) {fputs("Memory error",stderr); exit(2);}
 
-		memset(file_buffer, '\0', file_size);
+		memset(file_buffer, '\0', MAXBUFSIZE);
 
 		char ToSend[10];
 
-		sprintf(ToSend, "%d", sub_file_number);
+		sprintf(ToSend, "%ld", sub_file_number);
 
 		printf("Sending number of packets: %s\n", ToSend);
 
-		if(sendto(sock, &ToSend, sizeof(ToSend), 0, (struct sockaddr *)&remote, remote_length) < 0)    
+		if( (nbytes = sendto(sock, ToSend, sizeof(ToSend), 0, (struct sockaddr *)&from_addr, from_addr_length)) < 0)    
 	  	{
 	    	int errsv = errno;
-			printf("File not sent. Refer to error number: %d of the errno function\n", errsv);
+			// printf("File count not sent. Refer to error number: %d of the errno function\n", errsv);
+			fprintf(stderr, "Nbytes : %d .File count not sent : %s\n",nbytes,
+				strerror(errno));
+			close(sock);
 			exit(1);
 	  	}
 
+	  	printf("Sent the file count\n");
 		for(int i = sub_file_number+1; i>0; i--)
 		{
 			printf("\nBeginning of loop\n");
@@ -170,7 +145,7 @@ void get_function(int sock, char *value)
 
 		    printf("Sending data now\n");
 			
-			if(sendto(sock, &file_buffer, strlen(file_buffer), 0, (struct sockaddr *)&remote, remote_length) == -1)    
+			if(sendto(sock, &file_buffer, strlen(file_buffer), 0, (struct sockaddr *)&from_addr, from_addr_length) == -1)    
 		  	{
 		    	int errsv = errno;
 				printf("File not sent. Refer to error number: %d of the errno function\n", errsv);
@@ -184,7 +159,7 @@ void get_function(int sock, char *value)
 		  	}
 		  	// file_buffer += sub_file_size;
 
-		  	if(recvfrom(sock, ack, sizeof(ack), 0, (struct sockaddr *) &from_addr, (socklen_t *) &from_addr_length) == -1)
+		  	if(recvfrom(sock, ack, sizeof(ack), 0, (struct sockaddr *) &from_addr, &from_addr_length) == -1)
 			{
 				int errsv = errno;
 				printf("Data not received. Refer to error number: %d of the errno function\n", errsv);
@@ -196,6 +171,11 @@ void get_function(int sock, char *value)
 		fclose(fp);
 
 	  	return;
+	}else{
+		int errsv = errno;
+		printf("File not opened. Refer to error number: %d of the errno function\n", errsv);
+		close(sock);
+		exit(1);
 	}
 }
 
@@ -229,7 +209,7 @@ void checking_function(int sock, char *value)
 	else	
 	{
 		// struct sockaddr_in sin;
-		// unsigned int remote_length;        			//length of the sockaddr_in structure
+		// unsigned int from_addr_length;        			//length of the sockaddr_in structure
 		char st1[MAXBUFSIZE], st2[MAXBUFSIZE], st3[MAXBUFSIZE];
 
 		strcpy(st1, "Command given:");
@@ -246,7 +226,7 @@ void checking_function(int sock, char *value)
 		strcat(buffer,buf);
 
 		printf("Statement to be sent to client: %s \n", buffer);
-		if (sendto(sock, &buffer, sizeof(buffer), 0, (struct sockaddr*) &remote, remote_length) == -1)
+		if (sendto(sock, &buffer, sizeof(buffer), 0, (struct sockaddr*) &from_addr, from_addr_length) == -1)
 		{
 			int errsv = errno;
 			printf("Data not sent. Refer to error number: %d of the errno function\n", errsv);
@@ -285,11 +265,11 @@ int main (int argc, char * argv[] )
 	bzero(&sin,sizeof(sin));                    //zero the struct
 	sin.sin_family = AF_INET;                   //address family
 	sin.sin_port = htons(atoi(argv[1]));        //htons() sets the (short) host byte order to (short) network byte order. atoi() converts the number in a string to an int.
-	sin.sin_addr.s_addr = htonl(INADDR_ANY);    //Binding socket to all interfaces. Supplies the IP address of the local machine. htonl() sets the (long) host byte order to (long) network byte order
+	sin.sin_addr.s_addr = INADDR_ANY;    //Binding socket to all interfaces. Supplies the IP address of the local machine. htonl() sets the (long) host byte order to (long) network byte order
 
 
 	//Causes the system to create a generic socket of type UDP (datagram)
-	if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
 	{
 		int errsv = errno;
 		printf("Socket not created. Refer to error number: %d of the errno function\n", errsv);
@@ -301,7 +281,7 @@ int main (int argc, char * argv[] )
 	  Binding the created socket structure to an address specified by the second argument. Once we've created a socket, we must bind that socket to the 
 	  local address and port we've supplied in the sockaddr_in struct
 	 ******************/
-	if (bind(sock, (struct sockaddr *)&sin, sizeof(sin)) == -1)
+	if (bind(sock, (struct sockaddr *)&sin, sizeof(sin)) < 0)
 	{
 		int errsv = errno;
 		printf("Socket not bound. Refer to error number: %d of the errno function\n", errsv);
@@ -313,7 +293,7 @@ int main (int argc, char * argv[] )
 		//waits for an incoming message
 		bzero(buffer,sizeof(buffer));
 
-		if(recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr *) &from_addr, (socklen_t *) &from_addr_length) == -1)
+		if(recvfrom(sock, buffer, sizeof(buffer), 0, (struct sockaddr *) &from_addr, &from_addr_length) == -1)
 		{
 			int errsv = errno;
 			printf("Data not received. Refer to error number: %d of the errno function\n", errsv);
