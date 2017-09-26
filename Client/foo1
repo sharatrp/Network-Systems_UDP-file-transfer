@@ -473,4 +473,12 @@ Mean absolute error                      0.3263
 Root mean squared error                  0.3928
 Relative absolute error                 65.268  %
 Root relative squared error             78.5679 %
-Total Number of Instances    
+Total Number of Instances            24000     
+
+
+=== Confusion Matrix ===
+
+     a     b   <-- classified as
+  8776  3224 |     a = 1
+  1774 10226 |     b = -1
+
