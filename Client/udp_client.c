@@ -42,41 +42,6 @@ void ls_function(int sock, char *value);
 void get_function(int sock, int packet_number, char *value);
 void put_function(int sock, int packet_number, char *value);
 
-void checking_function(int sock, struct sockaddr_in from_addr, unsigned int addr_length, int packet_number, char *buffer)
-{
-	if(buffer[0] == 'e')
-	{
-		printf("Going to exit function\n");
-		exit_function(sock, buffer);
-		printf("came back!");
-	}
-	else if(buffer[0] == 'l')
-	{
-		printf("Going to ls function\n");
-		ls_function(sock, buffer);
-		printf("came back!");
-
-	}
-	else if(buffer[0] == 'g')
-	{
-		printf("Going to get function\n");
-		get_function(sock, packet_number, buffer);
-		printf("came back!");
-	}
-	else if(buffer[0] == 'p')
-	{
-		printf("Going to put function\n");
-		put_function(sock, packet_number, buffer);
-		printf("came back!");
-
-	}
-	else	
-	{
-		unclear_command(buffer);
-
-	}
-}
-
 
 void remove_old_file(char* file_name) 
 {
@@ -103,7 +68,7 @@ void unclear_command(char* buffer)
 
 	strcat(buffer,buf);
 
-	printf("Statement to be sent to client: %s \n", buffer);
+	printf("%s \n", buffer);
 	if (sendto(sock, buffer, sizeof(buffer), 0, (struct sockaddr*) &remote, sizeof(remote)) == -1)
 	{
 		int errsv = errno;
@@ -241,23 +206,20 @@ void get_function(int sock, int packet_number, char *value)
 
 void put_function(int sock, int packet_number, char *value)
 {
-	/**********************/char file_name[20]; /***********************/
 	size_t sub_file_size = 1000;
+
 	int size_file_buffer;
 	int size_sent = 0;
 
+	char file_name[MAXBUFSIZE];
+
+	strcpy(file_name,value+4);
+
 	FILE *fp;
 	fp = fopen(file_name, "rb+");
-	if(fp==NULL)
-	{
-    	perror("ERROR");
-		// printf("File not opened. Refer to error number: %d of the errno function\n", errsv);
-		exit(1);
-  	}
 
 	if(fp != NULL)
 	{
-
 		fseek(fp,0,SEEK_END);
 		size_t file_size = ftell(fp);
 		fseek(fp,0,SEEK_SET);
@@ -266,18 +228,35 @@ void put_function(int sock, int packet_number, char *value)
 
 		printf("No. of packets: %d\n", packet_number);
 
-		memset(file_buffer, 0, MAXBUFSIZE);
+		filesize.sequence_number = packet_number;
+		memcpy(filesize.buffer, file_name, sizeof(file_name));
+		filesize.buffer_length = file_size;		
 
-		char ToSend[10];
-		sprintf(ToSend, "%lu", file_size);
+		printf("%d\n", filesize.buffer_length);
 
-		//Sending file size
-		if(sendto(sock, ToSend, MAXBUFSIZE, 0, (struct sockaddr *)&from_addr, addr_length) < 0)    
+		//Sending file size in a packet
+		if(sendto(sock, &filesize, sizeof(struct packetdata), 0, (struct sockaddr *)&from_addr, addr_length) < 0)    
 	  	{
 	    	int errsv = errno;
 			printf("File not sent. Refer to error number: %d of the errno function\n", errsv);
 			exit(1);
 	  	}
+
+	  	//Waiting for ack
+	  	if((recvfrom(sock, &filesize, sizeof(struct packetdata), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length)) == -1)
+		{
+			int errsv = errno;
+			printf("message not received. Refer to error number: %d of the errno function\n", errsv);	
+		}
+
+		printf("Received ACK\n");
+
+		if(strcmp(filesize.buffer, ack) != 0)
+		{
+			printf("Missed sync. Resend.");
+			exit(1);
+		}
+
 
 		printf("Size of the file to be sent: %lu\n", file_size);
 
@@ -290,23 +269,6 @@ void put_function(int sock, int packet_number, char *value)
 			int bytes_Read = fread(file_buffer,1, sub_file_size,fp);
 
 		    printf("%d", bytes_Read);
-
-		    //Wait for ACK before sending files
-		    if(recvfrom(sock, ackr, sizeof(ackr), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length) == -1)
-			{
-				int errsv = errno;
-				printf("ACK not received. Refer to error number: %d of the errno function\n", errsv);
-				exit(1);
-			}
-
-			printf("Received ACK\n");
-
-			if(ackr == ack)
-			{
-				printf("\n\nMissed a packet\n\n\n");
-				i--;
-				continue;
-			}
 
 			packet_data.sequence_number = (i+1);
 			memcpy(packet_data.buffer,file_buffer,bytes_Read);
@@ -327,6 +289,20 @@ void put_function(int sock, int packet_number, char *value)
 
 		  	size_sent += bytes_Read;
 			printf("File size sent till now: %d\n", size_sent);
+
+			//Waiting for ack
+		  	if((recvfrom(sock, &filesize, sizeof(struct packetdata), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length)) == -1)
+			{
+				int errsv = errno;
+				printf("message not received. Refer to error number: %d of the errno function\n", errsv);	
+			}
+			printf("Received ACK\n");
+			if(strcmp(filesize.buffer, ack) != 0)
+			{
+				printf("Missed sync. Resend.");
+				exit(1);
+			}
+
 		}
 		
 	    if(recvfrom(sock, ackr, sizeof(ackr), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length) == -1)
@@ -335,14 +311,45 @@ void put_function(int sock, int packet_number, char *value)
 			printf("ACK not sent. Refer to error number: %d of the errno function\n", errsv);
 			exit(1);
 	  	}
-	  	printf("\nFile sent.\n");
+	  	printf("\nReceived ACK. Hence file sent.\n");
 		fclose(fp);
 	  	return;
 	}
 }
 
+void checking_function(int sock, struct sockaddr_in from_addr, unsigned int addr_length, int packet_number, char *buffer)
+{
+	if(buffer[0] == 'e')
+	{
+		printf("Going to exit function\n");
+		exit_function(sock, buffer);
+		printf("came back!");
+	}
+	else if(buffer[0] == 'l')
+	{
+		printf("Going to ls function\n");
+		ls_function(sock, buffer);
+		printf("came back!");
 
-/* You will have to modify the program below */
+	}
+	else if(buffer[0] == 'g')
+	{
+		printf("Going to get function\n");
+		get_function(sock, packet_number, buffer);
+		printf("came back!");
+	}
+	else if(buffer[0] == 'p')
+	{
+		printf("Going to put function\n");
+		put_function(sock, packet_number, buffer);
+		printf("came back!");
+	}
+	else	
+	{
+		unclear_command(buffer);
+	}
+}
+
 
 int main (int argc, char * argv[])
 {
@@ -391,7 +398,9 @@ int main (int argc, char * argv[])
 			exit(1);
 		}
 
-		//Waiting for packet containing filesize or ACK or file name
+		memset(&filesize, '\0', sizeof(struct packetdata));
+
+		//Waiting for packet containing filesize(get) or ACK(ls, exit, delete, put)
 		if((recvfrom(sock, &filesize, sizeof(struct packetdata), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length)) == -1)
 		{
 			int errsv = errno;
