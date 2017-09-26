@@ -12,18 +12,26 @@
 #include <memory.h>
 #include <errno.h>
 
-#define MAXBUFSIZE 1024
+#define MAXBUFSIZE 1000
 #define FORLISTINGMSGSIZE 1000
 
+int PACKETSIZE = 1000;
 int nbytes;                             	// number of bytes send by sendto()
 int sock;                               	//this will be our socket
 char buffer[MAXBUFSIZE];
 char packetnumber[10];
 char file_buffer[MAXBUFSIZE];
-size_t file_size = sizeof(buffer); 
+int size_file_buffer;
+size_t file_size; 
 struct sockaddr_in remote, from_addr;              	//"Internet socket address structure"
 unsigned int addr_length = sizeof(struct sockaddr);
 char ack[20];
+
+struct packetdata {
+	int sequence_number;
+	char buffer[MAXBUFSIZE];
+	int buffer_length;
+}packet_data;
 
 void remove_old_file(char* file_name);
 void exit_function(int sock, char *value);
@@ -61,6 +69,7 @@ void ls_function(int sock, char *value)
 		exit(1);
 	}
 	printf("Server says the list is as follows:\n%s\n\n", listing_directory);
+	exit(0);
 }
 
 
@@ -70,64 +79,90 @@ void get_function(int sock, int packet_number, char *value)
 
 	strcpy(file_name,value+4);
 
-	// remove_old_file(file_name);
+	remove_old_file(file_name);
 
-	FILE *fp = fopen(file_name,"w+b");
+	FILE *fp = fopen(file_name,"w");
 
-	while(packet_number+2 > 0)
+	if (fp == NULL) 
 	{
+		int errsv = errno;
+		printf("File not opened. Refer to error number: %d of the errno function\n", errsv);	
+		exit(1);
+	}
+
+	//Sending ack to confirm number of bytes received and send files
+	if(sendto(sock, ack, strlen(ack), 0, (struct sockaddr *)&remote, sizeof(remote)) == -1)    
+	{
+	   	int errsv = errno;
+		printf("File not sent. Refer to error number: %d of the errno function\n", errsv);
+		exit(1);
+	}
+
+	printf("File size to be recieved: %lu", file_size);
+
+	for(int i = 0; i<packet_number+1; i++)
+	{
+		int sequence_number = 0;
 
 		printf("\nBeginning of loop\n");
 
-		/******************
-		  sendto() sends immediately.  
-		  it will report an error if the message fails to leave the computer
-		  however, with UDP, there is no error if the message is lost in the network once it leaves the computer.
-		 ******************/
+		// char new_file[]="Received file";
+		// strcat(new_file,file_buffer);
+	
+		memset(&packet_data, '\0', sizeof(struct packetdata));
+		//bzero(&packet_data,sizeof(struct packetdata));
 
-		// file_buffer = (char*) malloc (sizeof(char)*file_size);
-		// if(file_buffer == NULL) {fputs("Memory error",stderr); exit(2);}
-
-		bzero(file_buffer,sizeof(file_buffer));
-
-		if((recvfrom(sock, file_buffer, sizeof(file_buffer), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length)) == -1)
+		//Waiting to receive packet data
+		if((recvfrom(sock, &packet_data, sizeof(struct packetdata), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length)) == -1)
 		{
 			int errsv = errno;
 			printf("message not received. Refer to error number: %d of the errno function\n", errsv);	
 			exit(1);
 		}
 
-		printf("Server replied.\n");
-		
-  		printf("sending ACK\n");
+  		printf("Received packet. Sending ACK\n");
 
+  		//ACK to tell that packet is received.
   		if(sendto(sock, ack, strlen(ack), 0, (struct sockaddr *)&remote, sizeof(remote)) == -1)    
 	  	{
 	    	int errsv = errno;
 			printf("File not sent. Refer to error number: %d of the errno function\n", errsv);
 			exit(1);
 	  	}
+	  	bzero(file_buffer,sizeof(file_buffer));
+	  	sequence_number = packet_data.sequence_number;
+		strcpy(file_buffer, packet_data.buffer);
+		size_file_buffer = packet_data.buffer_length;
+		printf("size_file_buffer:%d\n",size_file_buffer);
 
-	  	printf("sent ACK\n");
-	
-		if(file_buffer == ack)
+
+	    if(fwrite(file_buffer,1, size_file_buffer, fp) == 0)
 		{
-			return;
+			int errsv = errno;
+			printf("packet not written. Refer to error number: %d of the errno function\n", errsv);
+			exit(1);
 		}
+
+	  	printf("Packet saved. sent ACK\n");
+
+		printf("Finished with Internal Packet Number: %d\n Received Sequence Number: %d\n", i+1 , sequence_number);
+
+		printf("File size received: %d\n", size_file_buffer);
+
+		printf("file_size left: %lu\n", file_size);
+		file_size -=  size_file_buffer;
+
+		
+		// if(file_buffer == ack)
+		// {
+		// 	printf ("Number of packets sent till %d\n", packet_number);
+		// 	return;
+		// }
 	}
 
-
-
-	char new_file[]="Received file";
-	strcat(new_file,file_buffer);
-
-	printf("done. Size of file:%lu\n", sizeof(file_buffer));
-
-	if(fwrite(file_buffer,1,file_size,fp)<0)
-	{
-		printf("error writting file\n");
-		exit(1);
-	}
+	printf("File transfer done.");
+	fclose(fp);
+	return;
 }
 
 void put_function(int sock, char *value)
@@ -140,6 +175,7 @@ void put_function(int sock, char *value)
 
 int main (int argc, char * argv[])
 {
+	int packet_number;
 	strcpy(ack, " ACK for file. ");
 
 	if (argc < 3)
@@ -169,6 +205,8 @@ int main (int argc, char * argv[])
 	printf("Say something to server: ");
 
 	bzero(buffer,sizeof(buffer));
+
+	//taking the command from the console
 	fgets(buffer, sizeof(buffer), stdin);
 	buffer[strlen(buffer)-1] = '\0';
 
@@ -177,19 +215,32 @@ int main (int argc, char * argv[])
 	{
 		int errsv = errno;
 		printf("message not sent. Refer to error number: %d of the errno function\n", errsv);
+		exit(1);
 	}
 
+	char filesize[20];
+
 	//Waiting for number of packets or ACK
-	if((recvfrom(sock, packetnumber, sizeof(packetnumber), 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length)) == -1)
+	if((recvfrom(sock, filesize, MAXBUFSIZE, 0, (struct sockaddr *) &from_addr, (socklen_t *) &addr_length)) == -1)
 	{
 		int errsv = errno;
 		printf("message not received. Refer to error number: %d of the errno function\n", errsv);	
 	}
 
-	printf("Packet number: %s", packetnumber);
-	int packet_number = atoi(packetnumber);
-	printf("Packet number in int: %d\n",packet_number );
+	if(strcmp(filesize, ack) != 0)
+	{
+		printf("Reciving file of size: %s", filesize);
+		
+		file_size = atoi(filesize);
 
+		packet_number = file_size/PACKETSIZE;
+
+		printf("No. of packets: %d\n", packet_number);
+	}
+	else
+	{
+		printf("ACK Received");
+	}
 
 	if(buffer[0] == 'e')
 	{
@@ -229,7 +280,7 @@ int main (int argc, char * argv[])
 		strcat(buffer,buf);
 
 		printf("Statement to be sent to client: %s \n", buffer);
-		if (sendto(sock, &buffer, sizeof(buffer), 0, (struct sockaddr*) &remote, sizeof(remote)) == -1)
+		if (sendto(sock, buffer, sizeof(buffer), 0, (struct sockaddr*) &remote, sizeof(remote)) == -1)
 		{
 			int errsv = errno;
 			printf("Data not sent. Refer to error number: %d of the errno function\n", errsv);
