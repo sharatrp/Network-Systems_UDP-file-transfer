@@ -22,7 +22,6 @@ int nbytes;                        			//number of bytes we receive in our messag
 char buffer[MAXBUFSIZE];           			//a buffer to store our received message
 char file_buffer[MAXBUFSIZE];
 char ack [20];
-char ackr [20];
 char str1[MAXBUFSIZE], str2[MAXBUFSIZE], str3[MAXBUFSIZE];
 
 struct packetdata {
@@ -31,6 +30,7 @@ struct packetdata {
 	int buffer_length;
 } packet_data, filesize;
 
+void delete_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *file_name);
 void remove_old_file(char* file_name);
 void unclear_command(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *buffer);
 void exit_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *value);
@@ -39,6 +39,7 @@ void put_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 void get_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *value);
 void checking_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *value);
 
+//Delete if old file is present with this function
 void remove_old_file(char* file_name) 
 {
 	if (access(file_name, F_OK) != -1)
@@ -47,6 +48,7 @@ void remove_old_file(char* file_name)
 		}
 }
 
+//The function that runs when the commands are unclear
 void unclear_command(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *buffer)
 {
 	char st1[MAXBUFSIZE], st2[MAXBUFSIZE], st3[MAXBUFSIZE];
@@ -64,7 +66,7 @@ void unclear_command(int sock, struct sockaddr_in from_addr, unsigned int from_a
 
 	strcat(buffer,buf);
 
-	printf("Statement to be sent to client: %s \n", buffer);
+	printf("%s \n", buffer);
 	if (sendto(sock, buffer, sizeof(buffer), 0, (struct sockaddr*) &from_addr, from_addr_length) == -1)
 	{
 		int errsv = errno;
@@ -73,21 +75,28 @@ void unclear_command(int sock, struct sockaddr_in from_addr, unsigned int from_a
 	}
 }
 
-void delete_function()
+//Function that deletes the file requested by client
+void delete_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *file_name)
 {
-	// if (access(option, F_OK) != -1) {
-	// 	// file exists
-	// 	if (remove(option) == 0) {
-	// 		char fileDeleted[MAXBUFSIZE] = "File Successfully deleted";
-	// 		nbytes = sendto(sock, fileDeleted, sizeof(fileDeleted), 0,
-	// 				(struct sockaddr *) &remote, remote_length);
-	// 	} else {
-	// 		char fileNotDeleted[MAXBUFSIZE] = "Unable to delete file";
-	// 		nbytes = sendto(sock, fileNotDeleted, sizeof(fileNotDeleted), 0,
-	// 				(struct sockaddr *) &remote, remote_length);
-	// 	}
+	if (access(file_name, F_OK) != -1) 
+	{
+		// file exists
+		if (remove(file_name) == 0) 
+		{
+			char fileDeleted[MAXBUFSIZE] = "File Successfully deleted";
+			nbytes = sendto(sock, fileDeleted, sizeof(fileDeleted), 0,
+					(struct sockaddr *) &from_addr, from_addr_length);
+		} 
+		else //File doesn't exist
+		{
+			char fileNotDeleted[MAXBUFSIZE] = "Unable to delete file";
+			nbytes = sendto(sock, fileNotDeleted, sizeof(fileNotDeleted), 0,
+					(struct sockaddr *) &from_addr, from_addr_length);
+		}
+	}
 }
 
+//Function that closes the socket and exits the server
 void exit_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *value)
 {
 	strcpy(str2, "exit");
@@ -95,6 +104,7 @@ void exit_function(int sock, struct sockaddr_in from_addr, unsigned int from_add
 
 	if(compare == 0)
 	{
+		memset(&packet_data, 0, sizeof(struct packetdata));
 		filesize.sequence_number = 98765;
 		memcpy(filesize.buffer, ack, strlen(ack));
 		filesize.buffer_length = 98765;		
@@ -118,6 +128,7 @@ void exit_function(int sock, struct sockaddr_in from_addr, unsigned int from_add
 	}
 }
 
+//Function the gives out the list of files present in the server
 void ls_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *value)
 {
 
@@ -126,6 +137,7 @@ void ls_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_
 
 	if(compare == 0)
 	{
+		memset(&packet_data, 0, sizeof(struct packetdata));
 		filesize.sequence_number = 98765;
 		memcpy(filesize.buffer, ack, strlen(ack));
 		filesize.buffer_length = 98765;		
@@ -164,6 +176,7 @@ void ls_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_
 	}
 }
 
+//Function that receives the file from the client 
 void put_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_length, char *file_name, char *value)
 {
 	int size_file_buffer = 0;
@@ -180,7 +193,7 @@ void put_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 		printf("File not opened. Refer to error number: %d of the errno function\n", errsv);	
 		exit(1);
 	}
-
+	memset(&packet_data, 0, sizeof(struct packetdata));
 	filesize.sequence_number = 98765;
 	memcpy(filesize.buffer, ack, strlen(ack));
 	filesize.buffer_length = 98765;		
@@ -204,6 +217,8 @@ void put_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
   	int file_size = filesize.buffer_length;
   	int packet_number = filesize.sequence_number;
 
+
+	memset(&filesize, 0, sizeof(struct packetdata));
 	filesize.sequence_number = 98765;
 	memcpy(filesize.buffer, ack, strlen(ack));
 	filesize.buffer_length = 98765;		
@@ -237,6 +252,7 @@ void put_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 
   		printf("Received packet. Sending ACK\n");
 
+		memset(&filesize, 0, sizeof(struct packetdata));
   		//ACK to tell that packet is received.
 		filesize.sequence_number = 98765;
 		memcpy(filesize.buffer, ack, strlen(ack));
@@ -276,6 +292,7 @@ void put_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 	}
 	printf("\nFile transfer done. Sending ACK\n");
 
+	memset(&filesize, 0, sizeof(struct packetdata));
 	filesize.sequence_number = 98765;
 	memcpy(filesize.buffer, ack, strlen(ack));
 	filesize.buffer_length = 98765;		
@@ -294,6 +311,7 @@ void put_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 	return;
 }
 
+//Function that sends the file from server to the client
 void get_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_length, char *file_name)
 {
 	
@@ -310,7 +328,7 @@ void get_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 		fseek(fp,0,SEEK_END);
 		int file_size = ftell(fp);
 		fseek(fp,0,SEEK_SET);
-
+		printf("file_name: %s, file Size: %d", file_name, file_size);
 		int packet_number = file_size/sub_file_size;
 
 		printf("No. of packets: %d\n", packet_number);
@@ -321,7 +339,7 @@ void get_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 
 		printf("%d\n", filesize.buffer_length);
 
-		//Sending file size in a packet
+		//Sending file size and name in a packet
 		if(sendto(sock, &filesize, sizeof(struct packetdata), 0, (struct sockaddr *)&from_addr, from_addr_length) < 0)    
 	  	{
 	    	int errsv = errno;
@@ -336,7 +354,6 @@ void get_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 
 		for(int i = 0; i < packet_number+1; i++)
 		{
-			memset(&packet_data, 0, sizeof(struct packetdata));
 			printf("\nBeginning of loop\n");
 			bzero(file_buffer,sizeof(file_buffer));
 
@@ -344,21 +361,27 @@ void get_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 
 		    printf("%d", bytes_Read);
 
-		    //Wait for ACK before sending files
-		    if(recvfrom(sock, ackr, sizeof(ackr), 0, (struct sockaddr *) &from_addr, (socklen_t *) &from_addr_length) == -1)
+			memset(&filesize, 0, sizeof(struct packetdata));
+			filesize.sequence_number = 98765;
+			memcpy(filesize.buffer, ack, strlen(ack));
+			filesize.buffer_length = 98765;		
+
+		  	//Waiting for ack
+		  	if((recvfrom(sock, &filesize, sizeof(struct packetdata), 0, (struct sockaddr *) &from_addr, (socklen_t *) &from_addr_length)) == -1)
 			{
 				int errsv = errno;
-				printf("ACK not received. Refer to error number: %d of the errno function\n", errsv);
-				exit(1);
+				printf("message not received. Refer to error number: %d of the errno function\n", errsv);	
 			}
 
-			printf("Received ACK\n");
-
-			if(ackr == ack)
+			if(strcmp(filesize.buffer, ack) != 0)
 			{
-				printf("\n\nMissed a packet\n\n\n");
-				i--;
-				continue;
+				printf("Received: %s\n", filesize.buffer);
+				printf("Missed sync. Resend.\n");
+				exit(1);
+			}
+			else
+			{
+				printf("Received ACK\n");
 			}
 
 			packet_data.sequence_number = (i+1);
@@ -382,27 +405,55 @@ void get_function(int sock,struct sockaddr_in from_addr, unsigned int from_addr_
 			printf("File size sent till now: %d\n", size_sent);
 		}
 		
-	    if(recvfrom(sock, ackr, sizeof(ackr), 0, (struct sockaddr *) &from_addr, (socklen_t *) &from_addr_length) == -1)
+	   
+		memset(&filesize, 0, sizeof(struct packetdata));
+		filesize.sequence_number = 98765;
+		memcpy(filesize.buffer, ack, strlen(ack));
+		filesize.buffer_length = 98765;		
+
+		if(sendto(sock, &filesize, sizeof(struct packetdata), 0, (struct sockaddr *)&from_addr, from_addr_length) < 0)    
 	  	{
 	    	int errsv = errno;
-			printf("ACK not sent. Refer to error number: %d of the errno function\n", errsv);
+			printf("File not sent. Refer to error number: %d of the errno function\n", errsv);
 			exit(1);
-	  	}
+		}
 	  	printf("\nFile sent.\n");
 		fclose(fp);
 	  	return;
 	}
 }
 
-
+//Function that checks the command and runs the respective function
 void checking_function(int sock, struct sockaddr_in from_addr, unsigned int from_addr_length, char *value)
 {
 	strcpy(str1, value);
 
 	printf("str1's first letter: %c \n", value[0]);
 
-	// if()
-	if(value[0] == 'e')
+	if(value[0] == 'd')
+	{
+		char file_name[MAXBUFSIZE];
+		bzero(file_name,sizeof(MAXBUFSIZE));
+		char *command;
+		command = strtok(value, " ");
+		strcpy(file_name ,strtok(NULL, " "));
+
+		memset(&packet_data, 0, sizeof(struct packetdata));
+		filesize.sequence_number = 98765;
+		memcpy(filesize.buffer, ack, strlen(ack));
+		filesize.buffer_length = 98765;		
+
+		if(sendto(sock, &filesize, sizeof(struct packetdata), 0, (struct sockaddr *)&from_addr, from_addr_length) < 0)    
+	  	{
+	    	int errsv = errno;
+			printf("File not sent. Refer to error number: %d of the errno function\n", errsv);
+			exit(1);
+	  	}
+
+		printf("Going to delete function");
+		delete_function(sock, from_addr, from_addr_length, file_name);
+	}
+	else if(value[0] == 'e')
 	{
 		printf("Going to exit function\n");
 		exit_function(sock, from_addr, from_addr_length, value);
@@ -422,8 +473,7 @@ void checking_function(int sock, struct sockaddr_in from_addr, unsigned int from
 		char *command;
 		command = strtok(value, " ");
 		strcpy(file_name ,strtok(NULL, " "));
-		// printf("Converted values: %s ; %s \n", value, file_name);
-		//printf("File name: %s\n", file_name);
+		printf("file name:%s \n",file_name);
 		printf("Going to get function\n");
 		get_function(sock, from_addr, from_addr_length, file_name);
 	}
@@ -444,6 +494,7 @@ void checking_function(int sock, struct sockaddr_in from_addr, unsigned int from
 	// return;
 }
 
+//The Main function
 int main (int argc, char * argv[] )
 {
 	struct sockaddr_in sin, from_addr;    						//"Internet socket address structure"
