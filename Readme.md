@@ -1,6 +1,6 @@
 Programming assinment 1 by Sharat Rattehalli Puttaraju
 
-Implemented the UDP protocol between server and client. Have tested for file transfer of upto 30MB at the CSCL labs. 
+Implemented the UDP communication between server and client. Have tested for file transfer of upto 30MB at the CSCL labs. 
 
 Also implemented reliability using ACK's.
 
