@@ -1,4 +1,4 @@
-Programming assinment 1 by Sharat Rattehalli Puttaraju
+Programming assignment 1 for Network systems by Sharat Rattehalli Puttaraju
 
 Implemented the UDP communication between server and client. Have tested for file transfer of upto 30MB at the CSCL labs. 
 
